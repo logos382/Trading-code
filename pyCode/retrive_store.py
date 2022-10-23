@@ -1,9 +1,11 @@
 import asyncio
 import pandas as pd
 import sqlalchemy
+import time
 from binance import AsyncClient, BinanceSocketManager
 
 engine = sqlalchemy.create_engine('sqlite:///Trading-code/sqldb/B_Crypto.db')
+
 
 async def createdf(msg):
     df = pd.DataFrame([msg])
@@ -18,7 +20,7 @@ async def writesql(msg, symbol):
     frame = await createdf(msg)
     frame.to_sql(symbol, engine, if_exists='append', index=False)
 
-async def main(n, symbol):
+async def main(symbol, runtime):
     # initialise the client
     client = await AsyncClient.create()
     # initialise websocket factory manager
@@ -27,15 +29,20 @@ async def main(n, symbol):
     # this will exit and close the connection after 5 messages
     # start any sockets here, i.e a trade socket
     async with bsm.trade_socket(symbol) as ts:
-        for _ in range(n):
+        #for _ in range(n):
+        starttime = time.time()
+        endtime = time.time()
+        while endtime < starttime + runtime:
             msg = await ts.recv()
             #print(msg)
             loop.call_soon(asyncio.create_task, writesql(msg, symbol))
+            endtime = time.time()
     # exit the context manager
     await client.close_connection()
 
 if __name__ == "__main__":
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main(5, 'BTCBUSD'))
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main('BTCBUSD', 600))
 
