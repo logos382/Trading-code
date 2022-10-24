@@ -131,3 +131,4 @@ dmypy.json
 # my personal esclusion
 *_key.*
 *_Crypto.db
+*_Crypto.db-*
