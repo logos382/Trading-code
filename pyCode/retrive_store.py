@@ -4,6 +4,7 @@ import sqlalchemy
 import time
 from binance import AsyncClient, BinanceSocketManager
 
+# create the engine to write into the sql database(e.g. an sqlite db)
 engine = sqlalchemy.create_engine('sqlite:///Trading-code/sqldb/B_Crypto.db')
 
 async def createdf(msg):
@@ -41,10 +42,10 @@ async def writesql(msg, symbol):
     frame.to_sql(symbol, engine, if_exists='append', index=False)
 
 async def main(symbol, runtime):
-    """_summary_
+    """An asyncronous fanction that listen for asset market data from the Binance Websocket and store the data into an sql database
 
     Args:
-        symbol (_type_): _description_
+        symbol (String): the ticket symbol of the Binance asset we want to retrive and store data,
         runtime (integer): an integer representing the number of seconds we listen to websocket before we close the connection
                            e.g. 60 = 1 minute, 3600 = 1 hour, 86400 = 1 day, 2592000 = 30 Days, 31536000 = 1 year
     """
