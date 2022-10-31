@@ -4,8 +4,10 @@ import sqlalchemy
 import time
 from binance import AsyncClient, BinanceSocketManager
 
-# create the engine to write into the sql database(e.g. an sqlite db)
+# create the engine to write/read into the sql database(e.g. an sqlite db)
 engine = sqlalchemy.create_engine('sqlite:///Trading-code/sqldb/B_Crypto.db')
+
+
 
 async def createdf(msg):
     """_summary_
@@ -58,6 +60,7 @@ async def main(symbol, runtime):
     # start any sockets here, i.e a trade socket
     async with bsm.trade_socket(symbol) as ts:
         # save start and end current time into variables
+        starttime = time.time()
         currenttime = time.time()
         # Start a while loop with base case
         while currenttime < starttime + runtime:
@@ -75,5 +78,5 @@ if __name__ == "__main__":
 
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main('BTCBUSD', 36000))
+    loop.run_until_complete(main('BTCBUSD', 600))
 
