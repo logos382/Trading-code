@@ -58,7 +58,6 @@ async def main(symbol, runtime):
     # start any sockets here, i.e a trade socket
     async with bsm.trade_socket(symbol) as ts:
         # save start and end current time into variables
-        starttime = time.time()
         currenttime = time.time()
         # Start a while loop with base case
         while currenttime < starttime + runtime:
