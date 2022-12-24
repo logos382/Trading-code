@@ -2,7 +2,7 @@ import asyncio
 import pandas as pd
 import sqlalchemy
 import time
-from binance import AsyncClient, BinanceSocketManager
+import ccxt.async_support as ccxt
 
 # create the engine to write/read into the sql database(e.g. an sqlite db)
 engine = sqlalchemy.create_engine('sqlite:///Trading-code/Sqldb/B_Crypto.db')
@@ -20,15 +20,14 @@ async def createdf(msg):
         _type_: _description_
     """
     # Create a Data Frame from websocket msg
-    df = pd.DataFrame([msg])
+    df = pd.DataFrame([msg['info']])
     # Slice Dataframe to keep only required data
-    df = df.loc[:,['s', 'E', 'p']]
-    # Meaningfully rename colums
-    df.columns = ['Symbol', 'Time', 'Price']
+    df = df.loc[:,['symbol', 'openTime', 'closeTime', 'lastPrice']]
     # Convert Text to float for future calculations
-    df.Price = df.Price.astype(float)
+    df.lastPrice = df.lastPrice.astype(float)
     # convert unix UTC time to more readable one
-    df.Time = pd.to_datetime(df.Time, unit='ms')
+    df.closeTime = pd.to_datetime(df.closeTime, unit='ms')
+    df.openTime = pd.to_datetime(df.openTime, unit='ms')
     print(df)
     return df
 
@@ -52,28 +51,42 @@ async def main(symbol, runtime):
         runtime (integer): an integer representing the number of seconds we listen to websocket before we close the connection
                            e.g. 60 = 1 minute, 3600 = 1 hour, 86400 = 1 day, 2592000 = 30 Days, 31536000 = 1 year
     """
-    # initialise the client
-    client = await AsyncClient.create()
-    # initialise websocket factory manager
-    bsm = BinanceSocketManager(client)
-    # create listener using async with
-    # this will exit and close the connection after 5 messages
-    # start any sockets here, i.e a trade socket
-    async with bsm.trade_socket(symbol) as ts:
-        # save start and end current time into variables
-        starttime = time.time()
-        currenttime = time.time()
-        # Start a while loop with base case
-        while currenttime < starttime + runtime:
+    exchange = ccxt.binance()
+    exchange.enableRateLimit = True  # enable
+    # save start and end current time into variables
+    starttime = time.time()
+    currenttime = time.time()
+    # Start a while loop with base case
+    while currenttime < starttime + runtime:
+        try:
             # save the received Websocket msg into a variable
-            msg = await ts.recv()
-            # call a coroutine to excute the writing into sql wile waiting for next msg
+            msg = await exchange.fetch_ticker(symbol)
+#            print(exchange.iso8601(exchange.milliseconds()), 'fetched', symbol, 'ticker from', exchange.name)
+#            print(msg)
+            # call a coroutine to excute the writing process into sql while waiting for next msg
             # the attempt here is to continue to listen websocket while writing data
             loop.call_soon(asyncio.create_task, writesql(msg, symbol))
             # update the current time to evaluate loop continuation
             currenttime = time.time()
+        except ccxt.RequestTimeout as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e)[0:200])
+            # will retry
+        except ccxt.DDoSProtection as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e.args)[0:200])
+            # will retry
+        except ccxt.ExchangeNotAvailable as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e.args)[0:200])
+            # will retry
+        except ccxt.ExchangeError as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e)[0:200])
+            break  # won't retry
     # exit the context manager
-    await client.close_connection()
+    await exchange.close()
+
 
 if __name__ == "__main__":
 
