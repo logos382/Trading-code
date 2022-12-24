@@ -22,12 +22,11 @@ async def createdf(msg):
     # Create a Data Frame from websocket msg
     df = pd.DataFrame([msg['info']])
     # Slice Dataframe to keep only required data
-    df = df.loc[:,['symbol', 'openTime', 'closeTime', 'lastPrice']]
+    df = df.loc[:,['symbol', 'closeTime', 'lastPrice']]
     # Convert Text to float for future calculations
     df.lastPrice = df.lastPrice.astype(float)
     # convert unix UTC time to more readable one
     df.closeTime = pd.to_datetime(df.closeTime, unit='ms')
-    df.openTime = pd.to_datetime(df.openTime, unit='ms')
     print(df)
     return df
 
