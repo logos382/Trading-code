@@ -61,7 +61,7 @@ async def main(symbol, runtime):
             # save the received Websocket msg into a variable
             msg = await exchange.fetch_ticker(symbol)
 #            print(exchange.iso8601(exchange.milliseconds()), 'fetched', symbol, 'ticker from', exchange.name)
-#            print(msg)
+            print(msg)
             # call a coroutine to excute the writing process into sql while waiting for next msg
             # the attempt here is to continue to listen websocket while writing data
             loop.call_soon(asyncio.create_task, writesql(msg, symbol))
