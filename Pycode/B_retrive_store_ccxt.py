@@ -1,11 +1,13 @@
 import asyncio
 import pandas as pd
 import sqlalchemy
+from sqlalchemy.orm import sessionmaker
 import time
 import ccxt.async_support as ccxt
 
 # create the engine to write/read into the sql database(e.g. an sqlite db)
-engine = sqlalchemy.create_engine('sqlite:///Trading-code/Sqldb/B_Crypto.db')
+engine = sqlalchemy.create_engine('sqlite:///Trading-code/Sqldb/B_Crypto.db', poolclass=sqlalchemy.pool.QueuePool)
+Session = sessionmaker(bind=engine)
 
 symbol = 'BTCBUSD'
 
