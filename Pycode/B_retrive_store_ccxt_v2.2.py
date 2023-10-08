@@ -91,9 +91,22 @@ async def main(symbol, runtime):
                 # the attempt here is to continue to listen websocket while writing data
                 loop.call_soon(asyncio.create_task, writesql(msg, symbol))
                 # print(msg[0], '\n')
-            except Exception as e:
-                print(f'Error: {e}')
-                # Proper error handling implementation...
+            except ccxt.RequestTimeout as e:
+                print('[' + type(e).__name__ + ']')
+                print(str(e)[0:200])
+                 # will retry
+            except ccxt.DDoSProtection as e:
+                print('[' + type(e).__name__ + ']')
+                print(str(e.args)[0:200])
+                # will retry
+            except ccxt.ExchangeNotAvailable as e:
+                print('[' + type(e).__name__ + ']')
+                print(str(e.args)[0:200])
+                # will retry
+            except ccxt.ExchangeError as e:
+                print('[' + type(e).__name__ + ']')
+                print(str(e)[0:200])
+                break  # won't retry
         
         currenttime = time.time()
         if currenttime >= starttime + runtime:
@@ -109,5 +122,5 @@ async def main(symbol, runtime):
 if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(Symbols, 60))
+    loop.run_until_complete(main(Symbols, 6000))
 
