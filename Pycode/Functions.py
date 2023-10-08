@@ -1,5 +1,6 @@
+
 from asyncio import gather, run
-import ccxt.async_support as ccxt
+import ccxt.async_support as ccxt  # noqa: E402
 import asyncio
 import pandas as pd
 import sqlalchemy
@@ -7,17 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import inspect
 import time
 
-# create the engine to write/read into the sql database(e.g. an sqlite db)
-engine = sqlalchemy.create_engine('sqlite:///Trading-code/Sqldb/B_Crypto.db', poolclass=sqlalchemy.pool.QueuePool)
-Session = sessionmaker(bind=engine)
 
-starttime = time.time()
-runtime = 60 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
-
-exchanges = {
-        'mexc': ['BTC/USDT', 'RUNE/USDT'],
-        'binance': ['BTC/USDT', 'RUNE/USDT'],
-    }
 
 async def createdf(msg):
     """_summary_
@@ -105,10 +96,6 @@ async def exchange_loop(exchange_id, symbols, runtime):
     await gather(*loops)
     await exchange.close()
 
-
 async def main(exchanges, runtime):
         loops = [exchange_loop(exchange_id, symbols, runtime) for exchange_id, symbols in exchanges.items()]
         await gather(*loops)
-
-
-run(main(exchanges, runtime))
