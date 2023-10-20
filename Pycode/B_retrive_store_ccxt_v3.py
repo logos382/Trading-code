@@ -79,7 +79,6 @@ async def writesql(msg, symbol, exchange):
             if frame["id"].values not in last10rows["id"].values :
                 try:
                     async with asyncengine.begin() as asynconnbegin:
-                       print('writing 1')
                        await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
                 except Exception as e:
                     print(f'Error: {e}')
@@ -87,14 +86,13 @@ async def writesql(msg, symbol, exchange):
         else:
             try:
                 async with asyncengine.begin() as asynconnbegin:
-                    print('writing 2')
                     await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
             except Exception as e:
                 print(f'Error: {e}')
                 # Proper error handling implementation...
 
 
-async def readsql(runtime, tablenames):
+async def readsql(tablenames):
     while True:
         async with asyncengine.connect() as asynconn:
             tables = await asynconn.run_sync(use_inspector)
@@ -118,7 +116,7 @@ async def symbol_loop(exchange, symbol, runtime):
     while True:
         try:
             msg = await exchange.fetch_trades(symbol, limit=1)
-            await gather (writesql(msg, symbol, exchange), readsql(runtime, tablenames))
+            await gather (writesql(msg, symbol, exchange), readsql(tablenames))
             # await gather (writesql(msg, symbol, exchange))
         except Exception as e:
             print(str(e))
@@ -141,7 +139,6 @@ async def exchange_loop(exchange_id, symbols, runtime):
 async def main(exchanges, runtime):
         coroloops = [exchange_loop(exchange_id, symbols, runtime) for exchange_id, symbols in exchanges.items()]
         await gather(*coroloops)
-        # await gather(*loops)
 
 
 

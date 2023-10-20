@@ -49,18 +49,16 @@ async def createdf(msg):
     """
     # Create a Data Frame from websocket msg
     df = pd.DataFrame([msg[0]])
-    # print(df)
     # Slice Dataframe to keep only required data
     df = df.loc[:,['timestamp', 'symbol', 'price','amount','id']].rename(columns={"timestamp": "CloseTime", "price": "LastPrice"})
     # Convert Text to float for future calculations
     df.LastPrice = df.LastPrice.astype(float)
     # convert unix UTC time to more readable one
     df.CloseTime = pd.to_datetime(df.CloseTime, unit='ms')
-    #print(df)
     return df
 
 
-async def writesql(msg, symbol, exchange):
+async def write_sql(msg, symbol, exchange):
     """_summary_
 
     Args:
@@ -94,7 +92,7 @@ async def writesql(msg, symbol, exchange):
                 # Proper error handling implementation...
 
 
-async def readsql(runtime, tablenames):
+async def c_read_sql(tablenames):
     while True:
         async with asyncengine.connect() as asynconn:
             tables = await asynconn.run_sync(use_inspector)
@@ -118,7 +116,7 @@ async def symbol_loop(exchange, symbol, runtime):
     while True:
         try:
             msg = await exchange.fetch_trades(symbol, limit=1)
-            await gather (writesql(msg, symbol, exchange), readsql(runtime, tablenames))
+            await gather (write_sql(msg, symbol, exchange), c_read_sql(tablenames))
             # await gather (writesql(msg, symbol, exchange))
         except Exception as e:
             print(str(e))
@@ -141,7 +139,6 @@ async def exchange_loop(exchange_id, symbols, runtime):
 async def main(exchanges, runtime):
         coroloops = [exchange_loop(exchange_id, symbols, runtime) for exchange_id, symbols in exchanges.items()]
         await gather(*coroloops)
-        # await gather(*loops)
 
 
 
