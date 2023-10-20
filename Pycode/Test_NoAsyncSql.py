@@ -1,20 +1,16 @@
 # sqlalchemy 2.0.21
 # pandas 2.1.1
-
+from asyncio import gather, run, sleep
+import ccxt.async_support as ccxt
 import asyncio
-from asyncio import gather, run
 import pandas as pd
 import sqlalchemy
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import text
 from sqlalchemy import inspect
-from sqlalchemy.ext.asyncio import create_async_engine
 import time
-import ccxt.async_support as ccxt
-
+from sqlalchemy import text
 
 # create the engine to write/read into the sql database(e.g. an sqlite db)
-asyncengine = create_async_engine('sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db')
+engine = sqlalchemy.create_engine('sqlite:///Trading-code/Sqldb/B_Crypto.db', poolclass=sqlalchemy.pool.QueuePool)
 
 starttime = time.time()
 runtime = 60 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
@@ -23,20 +19,10 @@ exchanges = {
         'mexc': ['BTC/USDT', 'RUNE/USDT'],
     }
 
-tablenames = ['RUNE_USDT_MEXCGlobal', 'BTC_USDT_MEXCGlobal']
-
-def use_inspector(conn):
-    inspector = inspect(conn)
-    # return any value to the caller
-    return inspector.get_table_names()
-
-def to_sql_aioAlchemy(conn, frame, tablename):
-    frame.to_sql(tablename, conn, if_exists='append', index=False)
-
-def read_sql_aioAlchemy(conn, query):
-    df = pd.read_sql(query, conn)
-    return df
-
+tablenames = [
+    'RUNE_USDT_MEXCGlobal', 
+    'BTC_USDT_MEXCGlobal'
+    ]
 
 async def createdf(msg):
     """_summary_
@@ -69,48 +55,47 @@ async def writesql(msg, symbol, exchange):
     """
     # Call createdf() to create DataFrame from message
     frame = await createdf(msg)
-    async with asyncengine.connect() as asynconn:
-        tables = await asynconn.run_sync(use_inspector)
-        tablename = symbol.replace("/", "_")+"_"+str(exchange).replace(" ", "")
-        if tablename in tables:
+    insp = inspect(engine)
+    tablename = symbol.replace("/", "_")+"_"+str(exchange).replace(" ", "")
+    if insp.has_table(tablename):
+        with engine.begin() as conn:
             query = text('SELECT id FROM '+ tablename)
-            df = await asynconn.run_sync(read_sql_aioAlchemy, query)
+            df = pd.read_sql(query, con=conn)
             last10rows = df.tail(10)
             if frame["id"].values not in last10rows["id"].values :
                 try:
-                    async with asyncengine.begin() as asynconnbegin:
-                       print('writing 1')
-                       await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
+                    frame.to_sql(tablename, conn, if_exists='append', index=False)
                 except Exception as e:
                     print(f'Error: {e}')
                     # Proper error handling implementation...  
-        else:
+    else:
+        with engine.begin() as conn:
             try:
-                async with asyncengine.begin() as asynconnbegin:
-                    print('writing 2')
-                    await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
+                frame.to_sql(tablename, conn, if_exists='append', index=False)
             except Exception as e:
                 print(f'Error: {e}')
                 # Proper error handling implementation...
 
 
 async def readsql(runtime, tablenames):
+    # tablenames = ['RUNE_USDT_MEXCGlobal', 'BTC_USDT_MEXCGlobal']
     while True:
-        async with asyncengine.connect() as asynconn:
-            tables = await asynconn.run_sync(use_inspector)
-            for tablename in tablenames:
-                if tablename in tables:
-                    query = text('SELECT * FROM '+ tablename)
-                    df = await asynconn.run_sync(read_sql_aioAlchemy, query)
-                    df['CloseTime'] = pd.to_datetime(df['CloseTime'])
-                    df = df.set_index(['CloseTime'])
-                    df5min = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
-                    df5min['Symbol'] = tablename
-                    print(df5min.tail(1))
-            currenttime = time.time()
-            if currenttime >= starttime + runtime:
-                break
-            return df
+        insp = inspect(engine)
+        for tablename in tablenames:
+            if insp.has_table(tablename):
+                # df = pd.read_sql('SELECT * FROM '+ tablename + ' ORDER BY CloseTime DESC LIMIT 100', con=engine)
+                query = text('SELECT * FROM '+ tablename)
+                df = pd.read_sql( query, con=engine)
+                df['CloseTime'] = pd.to_datetime(df['CloseTime'])
+                df = df.set_index(['CloseTime'])
+                df = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
+                df['Symbol'] = tablename
+                print(df.tail(1), 'readsql')
+                # await sleep(2)
+        currenttime = time.time()
+        if currenttime >= starttime + runtime:
+            break
+        return df
 
 
 async def symbol_loop(exchange, symbol, runtime):
@@ -118,8 +103,10 @@ async def symbol_loop(exchange, symbol, runtime):
     while True:
         try:
             msg = await exchange.fetch_trades(symbol, limit=1)
+            now = exchange.milliseconds()
+            # print(exchange.iso8601(now), exchange.id, symbol, orderbook['asks'][0], orderbook['bids'][0])
+            # print(exchange.iso8601(now), exchange.id, symbol, msg)
             await gather (writesql(msg, symbol, exchange), readsql(runtime, tablenames))
-            # await gather (writesql(msg, symbol, exchange))
         except Exception as e:
             print(str(e))
             # raise e  # uncomment to break all loops in case of an error in any one of them
