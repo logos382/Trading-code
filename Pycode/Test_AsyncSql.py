@@ -17,7 +17,7 @@ import ccxt.async_support as ccxt
 asyncengine = create_async_engine('sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db')
 
 starttime = time.time()
-runtime = 60*10 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
+runtime = 3600 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
 
 exchanges = {
         'mexc': ['BTC/USDT', 'RUNE/USDT']
@@ -25,8 +25,8 @@ exchanges = {
     }
 
 tablenames = { 
-    'BTC_USDT_MEXCGlobal' : 37000,
-    'RUNE_USDT_MEXCGlobal' : 4
+    'BTC_USDT_MEXCGlobal' : 34800,
+    'RUNE_USDT_MEXCGlobal' : 3.70
 
     }  
 
@@ -82,7 +82,7 @@ async def write_sql(msg, symbol, exchange):
             if frame["id"].values not in last10rows["id"].values :
                 try:
                     async with asyncengine.begin() as asynconnbegin:
-                       print('writing 1')
+                       print('writing 1 on '+ tablename)
                        await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
                 except Exception as e:
                     print(f'Error: {e}')
@@ -90,7 +90,7 @@ async def write_sql(msg, symbol, exchange):
         else:
             try:
                 async with asyncengine.begin() as asynconnbegin:
-                    print('writing 2')
+                    print('writing 2 on '+ tablename)
                     await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
             except Exception as e:
                 print(f'Error: {e}')
@@ -113,6 +113,12 @@ async def c_read_sql(tablenames):
                     lastclose = df5min['Close'].iloc[-2:-1].values
                     previousclose = df5min['Close'].iloc[-3:-2].values
                     print(tablename, currentclose,lastclose,previousclose)
+                    if currentclose > allertprice:
+                        print('Price went above allert')
+                        if lastclose > allertprice:
+                            print('price closed above the allert') 
+                            if previousclose > allertprice:
+                                print('price holds above allert')   
             currenttime = time.time()
             if currenttime >= starttime + runtime:
                 break
@@ -124,14 +130,13 @@ async def symbol_loop(exchange, symbol, runtime):
     while True:
         try:
             msg = await exchange.fetch_trades(symbol, limit=1)
-            ticker = await exchange.fetch_ticker(symbol)
-            print(exchange.iso8601(exchange.milliseconds()), 'fetched', symbol, 'ticker from', exchange.name)
+            # ticker = await exchange.fetch_ticker(symbol)
+            # print(exchange.iso8601(exchange.milliseconds()), 'fetched', symbol, 'ticker from', exchange.name)
             # print (msg[0])
             # print(ticker)
-            print (msg[0]['datetime'],msg[0]['price'])
-            print(ticker['datetime'],ticker['close'],ticker['bid'])
+            # print (msg[0]['datetime'],msg[0]['price'])
+            # print(ticker['datetime'],ticker['close'],ticker['bid'])
             await gather (write_sql(msg, symbol, exchange), c_read_sql(tablenames))
-            # await gather (writesql(msg, symbol, exchange))
         except ccxt.RequestTimeout as e:
             print('[' + type(e).__name__ + ']')
             print(str(e)[0:200])
