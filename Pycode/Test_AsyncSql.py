@@ -20,14 +20,15 @@ starttime = time.time()
 runtime = 60*10 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
 
 exchanges = {
-        'mexc': ['BTC/USDT']
+        'mexc': ['BTC/USDT', 'RUNE/USDT']
 
-    } #'RUNE/USDT'
+    }
 
 tablenames = { 
-    'BTC_USDT_MEXCGlobal' : 37000
-    
-    }  #'RUNE_USDT_MEXCGlobal',
+    'BTC_USDT_MEXCGlobal' : 37000,
+    'RUNE_USDT_MEXCGlobal' : 4
+
+    }  
 
 def use_inspector(conn):
     inspector = inspect(conn)
@@ -115,7 +116,7 @@ async def c_read_sql(tablenames):
             currenttime = time.time()
             if currenttime >= starttime + runtime:
                 break
-            return df
+            return None
 
 
 async def symbol_loop(exchange, symbol, runtime):
