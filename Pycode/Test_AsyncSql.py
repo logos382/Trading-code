@@ -17,13 +17,17 @@ import ccxt.async_support as ccxt
 asyncengine = create_async_engine('sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db')
 
 starttime = time.time()
-runtime = 60 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
+runtime = 60*10 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
 
 exchanges = {
-        'mexc': ['BTC/USDT', 'RUNE/USDT'],
-    }
+        'mexc': ['BTC/USDT']
 
-tablenames = ['RUNE_USDT_MEXCGlobal', 'BTC_USDT_MEXCGlobal']
+    } #'RUNE/USDT'
+
+tablenames = { 
+    'BTC_USDT_MEXCGlobal' : 37000
+    
+    }  #'RUNE_USDT_MEXCGlobal',
 
 def use_inspector(conn):
     inspector = inspect(conn)
@@ -96,7 +100,7 @@ async def c_read_sql(tablenames):
     while True:
         async with asyncengine.connect() as asynconn:
             tables = await asynconn.run_sync(use_inspector)
-            for tablename in tablenames:
+            for tablename, allertprice in tablenames.items():
                 if tablename in tables:
                     query = text('SELECT * FROM '+ tablename)
                     df = await asynconn.run_sync(read_sql_aioAlchemy, query)
@@ -104,7 +108,10 @@ async def c_read_sql(tablenames):
                     df = df.set_index(['CloseTime'])
                     df5min = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
                     df5min['Symbol'] = tablename
-                    print(df5min.tail(1))
+                    currentclose = df5min['Close'].iloc[-1:].values
+                    lastclose = df5min['Close'].iloc[-2:-1].values
+                    previousclose = df5min['Close'].iloc[-3:-2].values
+                    print(tablename, currentclose,lastclose,previousclose)
             currenttime = time.time()
             if currenttime >= starttime + runtime:
                 break
@@ -116,12 +123,31 @@ async def symbol_loop(exchange, symbol, runtime):
     while True:
         try:
             msg = await exchange.fetch_trades(symbol, limit=1)
+            ticker = await exchange.fetch_ticker(symbol)
+            print(exchange.iso8601(exchange.milliseconds()), 'fetched', symbol, 'ticker from', exchange.name)
+            # print (msg[0])
+            # print(ticker)
+            print (msg[0]['datetime'],msg[0]['price'])
+            print(ticker['datetime'],ticker['close'],ticker['bid'])
             await gather (write_sql(msg, symbol, exchange), c_read_sql(tablenames))
             # await gather (writesql(msg, symbol, exchange))
-        except Exception as e:
-            print(str(e))
+        except ccxt.RequestTimeout as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e)[0:200])
+            # will retry
+        except ccxt.DDoSProtection as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e.args)[0:200])
+           #  will retry
+        except ccxt.ExchangeNotAvailable as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e.args)[0:200])
+            # will retry
+        except ccxt.ExchangeError as e:
+            print('[' + type(e).__name__ + ']')
+            print(str(e)[0:200])
             # raise e  # uncomment to break all loops in case of an error in any one of them
-            break  # you can break just this one loop if it fails
+            break  # you can break just this one loop if it fails# won't retry
         currenttime = time.time()
         if currenttime >= starttime + runtime:
             break
@@ -144,3 +170,4 @@ async def main(exchanges, runtime):
 
 if __name__ == "__main__":
     run(main(exchanges, runtime))
+
