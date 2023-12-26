@@ -13,79 +13,94 @@ import time
 import ccxt.async_support as ccxt
 
 # create the engine to write/read into the sql database(e.g. an sqlite db)
-asyncengine = create_async_engine('sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db')
+asyncengine = create_async_engine(
+    'sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db',
+    #pool_size=5,  # Adjust the pool size based on your needs
+    #max_overflow=0  # Adjust the max_overflow based on your needs
+)
 
 START_TIME = time.time()
-RUNTIME_SECONDS = 3600 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
+RUNTIME_SECONDS = 3600*3 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
 
 exchanges = {
-        'mexc': ['BTC/USDT', 'RUNE/USDT']
+        'mexc': ['BTC/USDT', 'RUNE/USDT'],
+        'binance': ['BTC/USDT', 'RUNE/USDT'],
 
     }
 
 tablenames = { 
-    'BTC_USDT_MEXCGlobal' : (34800,33800),
-    'RUNE_USDT_MEXCGlobal' : (3.70, 2.70)
+    'BTC_USDT_MEXCGlobal' : (43230,33800),
+    'RUNE_USDT_MEXCGlobal' : (5.66, 2.70),
+    'BTC_USDT_Binance' : (43230,33800),
+    'RUNE_USDT_Binance' : (5.66, 2.70)
 
     }  
+
 
 class allertmanager():
 
     def __init__(self):
         self.allertdict = {}
 
-    async def manageallerts(self, tablenames):
+    async def async_manage_allerts(self, tablenames):
         for tablename, allertprices in tablenames.items():
             if tablename in self.allertdict:
                 oallert = self.allertdict[tablename]
-                await oallert.c_read_sql(tablename)
+                await oallert.async_check_allert(tablename)
             else:
                 oallert = allert(allertprices[0], allertprices[1])
                 self.allertdict[tablename] = oallert
+
 
 class allert():
 
     def __init__(self, priceup, pricedown):
         self.priceup = priceup
         self.pricedown = pricedown
-    
-    async def c_read_sql(self, tablename):
+      
+    async def async_check_allert(self, tablename):
         async with asyncengine.connect() as asynconn:
-            query = text('SELECT * FROM '+ tablename)
-            df = await asynconn.run_sync(read_sql_aioAlchemy, query)
-            df['CloseTime'] = pd.to_datetime(df['CloseTime'])
-            df = df.set_index(['CloseTime'])
-            df5min = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
-            df5min['Symbol'] = tablename
-            currentclose = df5min['Close'].iloc[-1:].values
-            lastclose = df5min['Close'].iloc[-2:-1].values
-            previousclose = df5min['Close'].iloc[-3:-2].values
-            print('====================================')
-            print(f'this is allert for {tablename}, {self.priceup}, {self.pricedown}')
-            print(f'{currentclose}, {lastclose}, {previousclose}')
-            if currentclose > self.priceup:
-                print('Price went above allert')
-                if lastclose > self.priceup:
-                    print('price closed above the allert') 
-                    if previousclose > self.priceup:
-                        print('price holds above allert') 
-            print('====================================')
+            tables = await asynconn.run_sync(use_inspector)
+            if tablename in tables:
+                query = text('SELECT * FROM '+ tablename)
+                df = await asynconn.run_sync(read_sql_aioAlchemy, query)
+                df['CloseTime'] = pd.to_datetime(df['CloseTime'])
+                df = df.set_index(['CloseTime'])
+                df5min = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
+                df5min['Symbol'] = tablename
+                currentclose = df5min['Close'].iloc[-1:].values
+                lastclose = df5min['Close'].iloc[-2:-1].values
+                previousclose = df5min['Close'].iloc[-3:-2].values
+                print('====================================')
+                print(f'this is allert for {tablename}, {self.priceup}, {self.pricedown}')
+                print(f'{currentclose}, {lastclose}, {previousclose}')
+                if currentclose > self.priceup:
+                    print('Price went above allert')
+                    if lastclose > self.priceup:
+                        print('price closed above the allert') 
+                        if previousclose > self.priceup:
+                            print('price holds above allert') 
+                print('====================================')
+            else:
+                pass
 
-manager = allertmanager()
 
 def use_inspector(conn):
     inspector = inspect(conn)
     # return any value to the caller
     return inspector.get_table_names()
 
+
 def to_sql_aioAlchemy(conn, frame, tablename):
     frame.to_sql(tablename, conn, if_exists='append', index=False)
+
 
 def read_sql_aioAlchemy(conn, query):
     df = pd.read_sql(query, conn)
     return df
 
-async def createdf(msg):
+
+async def async_create_df(msg):
     """_summary_
 
     Args:
@@ -104,7 +119,8 @@ async def createdf(msg):
     df.CloseTime = pd.to_datetime(df.CloseTime, unit='ms')
     return df
 
-async def write_sql(msg, symbol, exchange):
+
+async def async_write_sql(msg, symbol, exchange):
     """_summary_
 
     Args:
@@ -112,7 +128,7 @@ async def write_sql(msg, symbol, exchange):
         symbol (_type_): _description_
     """
     # Call createdf() to create DataFrame from message
-    frame = await createdf(msg)
+    frame = await async_create_df(msg)
     async with asyncengine.connect() as asynconn:
         tables = await asynconn.run_sync(use_inspector)
         tablename = symbol.replace("/", "_")+"_"+str(exchange).replace(" ", "")
@@ -138,7 +154,7 @@ async def write_sql(msg, symbol, exchange):
                 # Proper error handling implementation...
 
 
-async def c_read_sql(tablenames):
+async def async_read_sql(tablenames):
     while True:
         async with asyncengine.connect() as asynconn:
             tables = await asynconn.run_sync(use_inspector)
@@ -165,7 +181,8 @@ async def c_read_sql(tablenames):
                 break
             return None
 
-async def symbol_loop(exchange, symbol, RUNTIME_SECONDS):
+
+async def async_symbol_loop(exchange, symbol, RUNTIME_SECONDS):
     print(f'Starting the {exchange.id} loop with {symbol}')
     while True:
         try:
@@ -176,8 +193,8 @@ async def symbol_loop(exchange, symbol, RUNTIME_SECONDS):
             # print(ticker)
             # print (msg[0]['datetime'],msg[0]['price'])
             # print(ticker['datetime'],ticker['close'],ticker['bid'])
-            # await gather (write_sql(msg, symbol, exchange), c_read_sql(tablenames), manager.manageallerts(tablenames))
-            await gather (write_sql(msg, symbol, exchange), manager.manageallerts(tablenames))
+            # await gather (write_sql(msg, symbol, exchange), async_read_sql(tablenames), manager.manageallerts(tablenames))
+            await gather (async_write_sql(msg, symbol, exchange), manager.async_manage_allerts(tablenames))
         except ccxt.RequestTimeout as e:
             print('[' + type(e).__name__ + ']')
             print(str(e)[0:200])
@@ -200,19 +217,24 @@ async def symbol_loop(exchange, symbol, RUNTIME_SECONDS):
             break
 
 
-async def exchange_loop(exchange_id, symbols, RUNTIME_SECONDS):
+async def async_exchange_loop(exchange_id, symbols, RUNTIME_SECONDS):
     print('Starting the', exchange_id, 'exchange loop with', symbols)
-    exchange = getattr(ccxt, exchange_id)()
+    exchange = getattr(ccxt, exchange_id)({
+        'options': {
+            'defaultType': 'spot',  # future, spot, margin, future, delivery
+        },
+    })
     exchange.enableRateLimit = True
-    coroloops = [symbol_loop(exchange, symbol, RUNTIME_SECONDS) for symbol in symbols]
+    coroloops = [async_symbol_loop(exchange, symbol, RUNTIME_SECONDS) for symbol in symbols]
     await gather(*coroloops)
     await exchange.close()
 
 
 async def main(exchanges, RUNTIME_SECONDS):
-        coroloops = [exchange_loop(exchange_id, symbols, RUNTIME_SECONDS) for exchange_id, symbols in exchanges.items()]
+        coroloops = [async_exchange_loop(exchange_id, symbols, RUNTIME_SECONDS) for exchange_id, symbols in exchanges.items()]
         await gather(*coroloops)
 
+manager = allertmanager()
 
 
 if __name__ == "__main__":
