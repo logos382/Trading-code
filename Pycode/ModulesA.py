@@ -1,18 +1,19 @@
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import text
 
 class allertmanager():
 
     def __init__(self):
         self.allertdict = {}
 
-    async def createallert(self, tablename, priceup, pricedown):
-        if tablename in self.allertdict:
-            self.allertdict[tablename].c_read_sql(tablename)
-        else:
-            oallert = allert(priceup, pricedown)
-            self.allertdict[tablename] = oallert
-
-
-
+    async def manageallerts(self, tablenames):
+        for tablename, allertprices in tablenames.items():
+            if tablename in self.allertdict:
+                oallert = self.allertdict[tablename]
+                await oallert.c_read_sql(tablename)
+            else:
+                oallert = allert(allertprices[0], allertprices[1])
+                self.allertdict[tablename] = oallert
 
 class allert():
 
@@ -20,7 +21,9 @@ class allert():
         self.priceup = priceup
         self.pricedown = pricedown
     
-    async def c_read_sql(tablename):
+    async def c_read_sql(self, tablename):
+        print('this is allert', self.priceup, self.pricedown)
+        asyncengine = create_async_engine('sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db')
         async with asyncengine.connect() as asynconn:
             query = text('SELECT * FROM '+ tablename)
             df = await asynconn.run_sync(read_sql_aioAlchemy, query)
@@ -32,9 +35,9 @@ class allert():
             lastclose = df5min['Close'].iloc[-2:-1].values
             previousclose = df5min['Close'].iloc[-3:-2].values
             print(tablename, currentclose,lastclose,previousclose)
-            if currentclose > allertprice:
+            if currentclose > self.priceup:
                 print('Price went above allert')
-                if lastclose > allertprice:
+                if lastclose > self.priceup:
                     print('price closed above the allert') 
-                    if previousclose > allertprice:
+                    if previousclose > self.priceup:
                         print('price holds above allert') 
