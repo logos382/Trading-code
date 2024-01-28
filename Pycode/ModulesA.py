@@ -8,37 +8,16 @@ def use_inspector(conn):
     # return any value to the caller
     return inspector.get_table_names()
 
-
 def to_sql_aioAlchemy(conn, frame, tablename):
     frame.to_sql(tablename, conn, if_exists='append', index=False)
+    return None
 
-
-def read_sql_aioAlchemy(conn, query):
+def read_sql_aioAlchemy( conn, query):
     df = pd.read_sql(query, conn)
     return df
 
 
-async def async_create_df(msg):
-    """_summary_
-
-    Args:
-        msg (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    # Create a Data Frame from websocket msg
-    df = pd.DataFrame([msg[0]])
-    # Slice Dataframe to keep only required data
-    df = df.loc[:,['timestamp', 'symbol', 'price','amount','id']].rename(columns={"timestamp": "CloseTime", "price": "LastPrice"})
-    # Convert Text to float for future calculations
-    df.LastPrice = df.LastPrice.astype(float)
-    # convert unix UTC time to more readable one
-    df.CloseTime = pd.to_datetime(df.CloseTime, unit='ms')
-    return df
-
-
-class allertmanager():
+class AllertManager():
 
     def __init__(self, asyncengine):
         self.allertdict = {}
@@ -51,11 +30,11 @@ class allertmanager():
                 noallert = await oallert.async_check_allert(tablename, self.engine)
                 self.allertdict[tablename] = noallert
             else:
-                oallert = allert(allertprices[0], allertprices[1])
+                oallert = Allert(allertprices[0], allertprices[1])
                 self.allertdict[tablename] = oallert
 
 
-class allert():
+class Allert():
 
     def __init__(self, priceup, pricedown):
         self.priceup = priceup
@@ -69,7 +48,7 @@ class allert():
             tables = await asynconn.run_sync(use_inspector)
             if tablename in tables:
                 query = text('SELECT * FROM '+ tablename)
-                df = await asynconn.run_sync(read_sql_aioAlchemy, query)
+                df = await asynconn.run_sync(read_sql_aioAlchemy,query)
                 df['CloseTime'] = pd.to_datetime(df['CloseTime'])
                 df = df.set_index(['CloseTime'])
                 df5min = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
@@ -98,45 +77,71 @@ class allert():
                         self.allertpriceholdsup = 1
                     else:
                         print('waiting to holdup')
-
                 print('====================================')
             else:
                 pass
             return self
 
 
-class dataio():
-    
-    def __init__(self, asyncengine):
+class DataIO():
+     
+    def __init__(self, asyncengine, buffer_size: int = 109)-> None:
         self.engine = asyncengine
+        self.buffer = None
+        self.BUFFER_SIZE = buffer_size
+
+    async def async_create_df(self,msg):
+        """_summary_
+
+        Args:
+            msg (_type_): _description_
+
+        Returns:
+        _   type_: _description_
+        """
+        # Create a Data Frame from websocket msg
+        df = pd.DataFrame([msg[0]])
+        # Slice Dataframe to keep only required data
+        df = df.loc[:,['timestamp', 'symbol', 'price','amount','id']].rename(columns={"timestamp": "CloseTime", "price": "LastPrice"})
+        # Convert Text to float for future calculations
+        df.LastPrice = df.LastPrice.astype(float)
+        # convert unix UTC time to more readable one
+        df.CloseTime = pd.to_datetime(df.CloseTime, unit='ms')
+        return df   
     
     async def async_write_sql(self, msg, symbol, exchange):
     # Call createdf() to create DataFrame from message
-        frame = await async_create_df(msg)
-        async with self.engine.connect() as asynconn:
-            tables = await asynconn.run_sync(use_inspector)
-            tablename = symbol.replace("/", "_")+"_"+str(exchange).replace(" ", "")
-            if tablename in tables:
-                query = text('SELECT id FROM '+ tablename)
-                df = await asynconn.run_sync(read_sql_aioAlchemy, query)
-                last10rows = df.tail(10)
-                if frame["id"].values not in last10rows["id"].values :
+        frame = await self.async_create_df(msg)
+        frame['tablename'] = symbol.replace("/", "_")+"_"+str(exchange).replace(" ", "")
+        if not isinstance(self.buffer, pd.core.frame.DataFrame):
+            self.buffer = frame
+            # print(len(self.buffer))
+        elif isinstance(self.buffer, pd.core.frame.DataFrame) and len(self.buffer) < self.BUFFER_SIZE:
+                if frame["id"].values not in self.buffer["id"].values :
+                    self.buffer = pd.concat([self.buffer, frame], ignore_index=True)
+                    # print(len(self.buffer))
+        elif isinstance(self.buffer, pd.core.frame.DataFrame) and len(self.buffer) == self.BUFFER_SIZE or len(self.buffer) > self.BUFFER_SIZE:
+                if frame["id"].values not in self.buffer["id"].values :
+                    self.buffer = pd.concat([self.buffer, frame], ignore_index=True)
                     try:
                         async with self.engine.begin() as asynconnbegin:
-                            print(f'writing 1 on {tablename}')
-                            await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
+                            # print(f'Buffer full, writing on sql db')
+                            # print(len(self.buffer))
+                            series = pd.Series(self.buffer.tablename) 
+                            series = series.drop_duplicates()
+                            for tablename in series:
+                                rslt_df = self.buffer.loc[self.buffer['tablename'] == tablename]
+                                rslt_df = rslt_df.iloc[:,:5]
+                                print(f'Wrote on sql table {tablename} {len(rslt_df)} items')
+                                # print(len(self.buffer))
+                                await asynconnbegin.run_sync(to_sql_aioAlchemy, rslt_df, tablename)                                         
                     except Exception as e:
                         print(f'Error: {e}')
                         # Proper error handling implementation...  
-            else:
-                try:
-                    async with self.engine.begin() as asynconnbegin:
-                        print(f'writing 2 on {tablename}')
-                        await asynconnbegin.run_sync(to_sql_aioAlchemy, frame, tablename)
-                except Exception as e:
-                    print(f'Error: {e}')
-                    # Proper error handling implementation...
-
+                self.buffer = self.buffer.tail(10) #empty the buffer
+        else:
+            pass
+        return None
 
     async def async_read_sql(self, tablenames):
         async with self.engine.connect() as asynconn:

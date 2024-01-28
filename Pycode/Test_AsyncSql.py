@@ -6,14 +6,8 @@ from asyncio import gather, run
 from sqlalchemy.ext.asyncio import create_async_engine
 import time
 import ccxt.async_support as ccxt
-from ModulesA import allertmanager, allert, dataio
-
-# create the engine to write/read into the sql database(e.g. an sqlite db)
-asyncengine = create_async_engine(
-    'sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db',
-    #pool_size=5,  # Adjust the pool size based on your needs
-    #max_overflow=0  # Adjust the max_overflow based on your needs
-)
+from ModulesA import AllertManager, Allert, DataIO
+from Pyrobot import Robot
 
 START_TIME = time.time()
 RUNTIME_SECONDS = 3600*3 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
@@ -32,8 +26,11 @@ tablenames = {
 
     }  
 
-manager = allertmanager(asyncengine)
-dataoperator = dataio(asyncengine)
+
+# create the engine to write/read into the sql database(e.g. an sqlite db)
+asyncengine = Robot.create_asyncengine('sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db')
+manager = AllertManager(asyncengine)
+dataoperator = DataIO(asyncengine)
 
 async def async_symbol_loop(exchange, symbol, RUNTIME_SECONDS):
     print(f'Starting the {exchange.id} loop with {symbol}')
@@ -72,12 +69,7 @@ async def async_symbol_loop(exchange, symbol, RUNTIME_SECONDS):
 
 async def async_exchange_loop(exchange_id, symbols, RUNTIME_SECONDS):
     print('Starting the', exchange_id, 'exchange loop with', symbols)
-    exchange = getattr(ccxt, exchange_id)({
-        'options': {
-            'defaultType': 'spot',  # future, spot, margin, future, delivery
-        },
-    })
-    exchange.enableRateLimit = True
+    exchange = Robot.create_exchanges(exchange_id, 'spot')
     coroloops = [async_symbol_loop(exchange, symbol, RUNTIME_SECONDS) for symbol in symbols]
     await gather(*coroloops)
     await exchange.close()
@@ -86,8 +78,6 @@ async def async_exchange_loop(exchange_id, symbols, RUNTIME_SECONDS):
 async def main(exchanges, RUNTIME_SECONDS):
         coroloops = [async_exchange_loop(exchange_id, symbols, RUNTIME_SECONDS) for exchange_id, symbols in exchanges.items()]
         await gather(*coroloops)
-
-
 
 
 if __name__ == "__main__":
