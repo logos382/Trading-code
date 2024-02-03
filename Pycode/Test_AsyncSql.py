@@ -1,15 +1,14 @@
 # sqlalchemy 2.0.21
 # pandas 2.1.1
 
-import asyncio
 from asyncio import gather, run
 from sqlalchemy.ext.asyncio import create_async_engine
 import time
 import ccxt.async_support as ccxt
-from ModulesA import AllertManager, Allert, DataIO
+from ModulesA import AlertManager, DataOperator
 from Pyrobot import Robot
 
-RUNTIME_SECONDS = 60*3 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
+RUNTIME_SECONDS = 3600*1 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
 
 exchanges = {
         'mexc': ['BTC/USDT', 'RUNE/USDT'],
@@ -18,18 +17,18 @@ exchanges = {
     }
 
 tablenames = { 
-    'BTC_USDT_MEXCGlobal' : (43230,33800),
-    'RUNE_USDT_MEXCGlobal' : (5.66, 2.70),
-    'BTC_USDT_Binance' : (43230,33800),
-    'RUNE_USDT_Binance' : (5.66, 2.70)
+    'BTC_USDT_mexc' : (43230,33800),
+    'RUNE_USDT_mexc' : (5.66, 2.70),
+    'BTC_USDT_binance' : (43230,33800),
+    'RUNE_USDT_binance' : (5.66, 2.70)
 
     }  
 
 
 # create the engine to write/read into the sql database(e.g. an sqlite db)
 asyncengine = Robot.create_asyncengine('sqlite+aiosqlite:///Trading-code/Sqldb/B_Crypto.db')
-manager = AllertManager(asyncengine)
-dataoperator = DataIO(asyncengine)
+manager = AlertManager(asyncengine)
+dataoperator = DataOperator(asyncengine)
 
 async def async_symbol_loop(exchange, symbol):
     print(f'Starting the {exchange.id} loop with {symbol}')
@@ -37,14 +36,7 @@ async def async_symbol_loop(exchange, symbol):
     while time.time() < end_time:
         try:
             msg = await exchange.fetch_trades(symbol, limit=1)
-            # ticker = await exchange.fetch_ticker(symbol)
-            # print(exchange.iso8601(exchange.milliseconds()), 'fetched', symbol, 'ticker from', exchange.name)
-            # print (msg[0])
-            # print(ticker)
-            # print (msg[0]['datetime'],msg[0]['price'])
-            # print(ticker['datetime'],ticker['close'],ticker['bid'])
-            # await gather (dataoperator.async_write_sql(msg, symbol, exchange), dataoperator.async_read_sql(tablenames),manager.async_manage_allerts(tablenames))
-            await gather(dataoperator.async_write_sql(msg, symbol, exchange), manager.async_manage_allerts(tablenames))
+            await gather(dataoperator.async_write_sql(msg, symbol, exchange), manager.async_manage_alerts(tablenames))
         except (ccxt.RequestTimeout, ccxt.DDoSProtection, ccxt.ExchangeNotAvailable) as e:
             print(f'[{type(e).__name__}] {str(e.args)[:200]}')
         except ccxt.ExchangeError as e:
@@ -62,7 +54,8 @@ async def async_exchange_loop(exchange_id, symbols):
 
 async def main(exchanges):
         coroloops = [async_exchange_loop(exchange_id, symbols) for exchange_id, symbols in exchanges.items()]
-        await gather(*coroloops)
+        othercoro = []
+        await gather(*coroloops, *othercoro)
 
 
 if __name__ == "__main__":

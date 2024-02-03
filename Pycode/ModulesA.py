@@ -5,153 +5,126 @@ import pandas as pd
 
 def use_inspector(conn):
     inspector = inspect(conn)
-    # return any value to the caller
     return inspector.get_table_names()
 
-def to_sql_aioAlchemy(conn, frame, tablename):
-    frame.to_sql(tablename, conn, if_exists='append', index=False)
-    return None
-
-def read_sql_aioAlchemy( conn, query):
-    return pd.read_sql(query, conn)
-
-
-class AllertManager():
+class AlertManager():
 
     def __init__(self, asyncengine):
-        self.allertdict = {}
+        self.alert_dict = {}
         self.engine = asyncengine
 
-    async def async_manage_allerts(self, tablenames):
-        for tablename, allertprices in tablenames.items():
-            if tablename in self.allertdict:
-                oallert = self.allertdict[tablename]
-                noallert = await oallert.async_check_allert(tablename, self.engine)
-                self.allertdict[tablename] = noallert
+    async def async_manage_alerts(self, tablenames):
+        for tablename, alertprices in tablenames.items():
+            if tablename in self.alert_dict:
+                alert = self.alert_dict[tablename]
+                updated_alert = await alert.async_check_alert(tablename, self.engine)
+                self.alert_dict[tablename] = updated_alert
             else:
-                oallert = Allert(allertprices[0], allertprices[1])
-                self.allertdict[tablename] = oallert
+                alert = Alert(alertprices[0], alertprices[1])
+                self.alert_dict[tablename] = alert
 
 
-class Allert():
+class Alert():
 
     def __init__(self, priceup, pricedown):
         self.priceup = priceup
         self.pricedown = pricedown
-        self.allertpricebreakup = 0
-        self.allertpricecloseup = 0
-        self.allertpriceholdsup = 0
-    
-    async def async_check_allert(self, tablename, asyncengine):
+        self.alertpricebreakup = 0
+        self.alertpricecloseup = 0
+        self.alertpriceholdsup = 0
+
+    async def async_check_alert(self, tablename, asyncengine):
         async with asyncengine.connect() as asynconn:
             tables = await asynconn.run_sync(use_inspector)
             if tablename in tables:
-                query = text('SELECT * FROM '+ tablename)
-                df = await asynconn.run_sync(read_sql_aioAlchemy,query)
+                query = text(f'SELECT * FROM {tablename}')
+                df = await asynconn.run_sync(DataOperator.read_sql, query)
                 df['CloseTime'] = pd.to_datetime(df['CloseTime'])
                 df = df.set_index(['CloseTime'])
-                df5min = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
+                df5min = df['LastPrice'].resample('5min').agg(Open="first", Close="last", High="max", Low="min")
                 df5min['Symbol'] = tablename
                 currentclose = df5min['Close'].iloc[-1:].values
                 lastclose = df5min['Close'].iloc[-2:-1].values
                 previousclose = df5min['Close'].iloc[-3:-2].values
                 print('====================================')
-                print(f'this is allert for {tablename}, {self.priceup}, {self.pricedown}')
+                print(f'this is alert for {tablename}, {self.priceup}, {self.pricedown}')
                 print(f'{currentclose}, {lastclose}, {previousclose}')
-                if self.allertpricebreakup == 0:
+                if self.alertpricebreakup == 0:
                     if currentclose > self.priceup:
-                        print('Price went above allert')
-                        self.allertpricebreakup = 1
+                        print('Price went above alert')
+                        self.alertpricebreakup = 1
                     else:
                         print('Waiting for breakup')
-                if self.allertpricebreakup == 1 and self.allertpricecloseup == 0:
+                if self.alertpricebreakup == 1 and self.alertpricecloseup == 0:
                     if lastclose > self.priceup:
-                        print('price closed above the allert') 
-                        self.allertpricecloseup = 1
+                        print('price closed above the alert') 
+                        self.alertpricecloseup = 1
                     else:
                         print('waiting to closeup')
-                if self.allertpricebreakup == 1 and self.allertpricecloseup == 1 and self.allertpriceholdsup == 0:
+                if self.alertpricebreakup == 1 and self.alertpricecloseup == 1 and self.alertpriceholdsup == 0:
                     if previousclose > self.priceup:
-                        print('price holds above allert') 
-                        self.allertpriceholdsup = 1
+                        print('price holds above alert') 
+                        self.alertpriceholdsup = 1
                     else:
                         print('waiting to holdup')
                 print('====================================')
             return self
 
 
-class DataIO():
-     
-    def __init__(self, asyncengine, buffer_size: int = 109)-> None:
+class DataOperator():
+
+    def __init__(self, asyncengine, buffer_size: int = 109):
         self.engine = asyncengine
         self.buffer = None
         self.BUFFER_SIZE = buffer_size
 
-    async def async_create_df(self,msg):
-        """_summary_
+    @staticmethod
+    def to_sql(conn, frame, tablename):
+        frame.to_sql(tablename, conn, if_exists='append', index=False)
 
-        Args:
-            msg (_type_): _description_
+    @staticmethod
+    def read_sql(conn, query):
+        return pd.read_sql(query, conn)
 
-        Returns:
-        _   type_: _description_
-        """
-        # Create a Data Frame from websocket msg
+    async def async_create_df(self, msg):
         df = pd.DataFrame([msg[0]])
-        # Slice Dataframe to keep only required data
-        df = df.loc[:,['timestamp', 'symbol', 'price','amount','id']].rename(columns={"timestamp": "CloseTime", "price": "LastPrice"})
-        # Convert Text to float for future calculations
+        df = df.loc[:, ['timestamp', 'symbol', 'price', 'amount', 'id']].rename(columns={"timestamp": "CloseTime", "price": "LastPrice"})
         df.LastPrice = df.LastPrice.astype(float)
-        # convert unix UTC time to more readable one
         df.CloseTime = pd.to_datetime(df.CloseTime, unit='ms')
-        return df   
-    
+        return df
+
     async def async_write_sql(self, msg, symbol, exchange):
-    # Call createdf() to create DataFrame from message
         frame = await self.async_create_df(msg)
-        frame['tablename'] = symbol.replace("/", "_")+"_"+str(exchange).replace(" ", "")
-        if not isinstance(self.buffer, pd.core.frame.DataFrame):
+        frame['tablename'] = f"{symbol.replace('/', '_')}_{exchange.id.replace(' ', '')}"
+        if not isinstance(self.buffer, pd.DataFrame):
             self.buffer = frame
-            # print(len(self.buffer))
         elif len(self.buffer) < self.BUFFER_SIZE:
-            if frame["id"].values not in self.buffer["id"].values :
+            if frame["id"].values not in self.buffer["id"].values:
                 self.buffer = pd.concat([self.buffer, frame], ignore_index=True)
-                # print(len(self.buffer))
-        elif (
-            len(self.buffer) == self.BUFFER_SIZE
-            or len(self.buffer) > self.BUFFER_SIZE
-        ):
-            if frame["id"].values not in self.buffer["id"].values :
-                self.buffer = pd.concat([self.buffer, frame], ignore_index=True)
-                try:
-                    async with self.engine.begin() as asynconnbegin:
-                        # print(f'Buffer full, writing on sql db')
-                        # print(len(self.buffer))
-                        series = pd.Series(self.buffer.tablename) 
-                        series = series.drop_duplicates()
-                        for tablename in series:
-                            rslt_df = self.buffer.loc[self.buffer['tablename'] == tablename]
-                            rslt_df = rslt_df.iloc[:,:5]
-                            print(f'Wrote on sql table {tablename} {len(rslt_df)} items')
-                            # print(len(self.buffer))
-                            await asynconnbegin.run_sync(to_sql_aioAlchemy, rslt_df, tablename)                                         
-                except Exception as e:
-                    print(f'Error: {e}')
-                    # Proper error handling implementation...  
-            self.buffer = self.buffer.tail(10) #empty the buffer
+        elif frame["id"].values not in self.buffer["id"].values:
+            self.buffer = pd.concat([self.buffer, frame], ignore_index=True)
+            try:
+                async with self.engine.begin() as conn:
+                    series = self.buffer['tablename'].drop_duplicates()
+                    for tablename in series:
+                        rslt_df = self.buffer[self.buffer['tablename'] == tablename].iloc[:, :5]
+                        # print(f'Wrote on sql table {tablename} {len(rslt_df)} items')
+                        await conn.run_sync(DataOperator.to_sql, rslt_df, tablename)        
+            except Exception as e:
+                print(f'Error: {e}')
+            self.buffer = self.buffer.tail(10)
         return None
 
     async def async_read_sql(self, tablenames):
-        async with self.engine.connect() as asynconn:
-            tables = await asynconn.run_sync(use_inspector)
-            for tablename, allertprices in tablenames.items():
+        async with self.engine.connect() as conn:
+            tables = await conn.run_sync(use_inspector)
+            for tablename, alertprices in tablenames.items():
                 if tablename in tables:
-                    query = text('SELECT * FROM '+ tablename)
-                    df = await asynconn.run_sync(read_sql_aioAlchemy, query)
+                    query = text(f'SELECT * FROM {tablename}')
+                    df = await conn.run_sync(DataOperator.read_sql, query)
                     df['CloseTime'] = pd.to_datetime(df['CloseTime'])
                     df = df.set_index(['CloseTime'])
-                    dfxmin = df['LastPrice'].resample('5min').agg(Open="first", Close="last",High="max", Low="min")
+                    dfxmin = df['LastPrice'].resample('5min').agg(Open="first", Close="last", High="max", Low="min")
                     dfxmin['Symbol'] = tablename
                     print(f'this is dataio for {tablename}')
-            return None #dfxmin            
-                    
+            return None
