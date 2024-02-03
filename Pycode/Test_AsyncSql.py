@@ -9,8 +9,7 @@ import ccxt.async_support as ccxt
 from ModulesA import AllertManager, Allert, DataIO
 from Pyrobot import Robot
 
-START_TIME = time.time()
-RUNTIME_SECONDS = 3600*3 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
+RUNTIME_SECONDS = 60*3 # 60 = 1m; 3600 = 1H; 86700 = 1D; 607800 = 1W
 
 exchanges = {
         'mexc': ['BTC/USDT', 'RUNE/USDT'],
@@ -32,9 +31,10 @@ asyncengine = Robot.create_asyncengine('sqlite+aiosqlite:///Trading-code/Sqldb/B
 manager = AllertManager(asyncengine)
 dataoperator = DataIO(asyncengine)
 
-async def async_symbol_loop(exchange, symbol, RUNTIME_SECONDS):
+async def async_symbol_loop(exchange, symbol):
     print(f'Starting the {exchange.id} loop with {symbol}')
-    while True:
+    end_time = time.time() + RUNTIME_SECONDS
+    while time.time() < end_time:
         try:
             msg = await exchange.fetch_trades(symbol, limit=1)
             # ticker = await exchange.fetch_ticker(symbol)
@@ -44,42 +44,28 @@ async def async_symbol_loop(exchange, symbol, RUNTIME_SECONDS):
             # print (msg[0]['datetime'],msg[0]['price'])
             # print(ticker['datetime'],ticker['close'],ticker['bid'])
             # await gather (dataoperator.async_write_sql(msg, symbol, exchange), dataoperator.async_read_sql(tablenames),manager.async_manage_allerts(tablenames))
-            await gather (dataoperator.async_write_sql(msg, symbol, exchange), manager.async_manage_allerts(tablenames))
-        except ccxt.RequestTimeout as e:
-            print('[' + type(e).__name__ + ']')
-            print(str(e)[0:200])
-            # will retry
-        except ccxt.DDoSProtection as e:
-            print('[' + type(e).__name__ + ']')
-            print(str(e.args)[0:200])
-           #  will retry
-        except ccxt.ExchangeNotAvailable as e:
-            print('[' + type(e).__name__ + ']')
-            print(str(e.args)[0:200])
-            # will retry
+            await gather(dataoperator.async_write_sql(msg, symbol, exchange), manager.async_manage_allerts(tablenames))
+        except (ccxt.RequestTimeout, ccxt.DDoSProtection, ccxt.ExchangeNotAvailable) as e:
+            print(f'[{type(e).__name__}] {str(e.args)[:200]}')
         except ccxt.ExchangeError as e:
-            print('[' + type(e).__name__ + ']')
-            print(str(e)[0:200])
-            # raise e  # uncomment to break all loops in case of an error in any one of them
-            break  # you can break just this one loop if it fails# won't retry
-        currenttime = time.time()
-        if currenttime >= START_TIME + RUNTIME_SECONDS:
+            print(f'[{type(e).__name__}] {str(e)[:200]}')
             break
 
 
-async def async_exchange_loop(exchange_id, symbols, RUNTIME_SECONDS):
-    print('Starting the', exchange_id, 'exchange loop with', symbols)
+async def async_exchange_loop(exchange_id, symbols):
+    print(f'Starting the {exchange_id} exchange loop with {symbols}')
     exchange = Robot.create_exchanges(exchange_id, 'spot')
-    coroloops = [async_symbol_loop(exchange, symbol, RUNTIME_SECONDS) for symbol in symbols]
+    coroloops = [async_symbol_loop(exchange, symbol) for symbol in symbols]
     await gather(*coroloops)
     await exchange.close()
 
 
-async def main(exchanges, RUNTIME_SECONDS):
-        coroloops = [async_exchange_loop(exchange_id, symbols, RUNTIME_SECONDS) for exchange_id, symbols in exchanges.items()]
+async def main(exchanges):
+        coroloops = [async_exchange_loop(exchange_id, symbols) for exchange_id, symbols in exchanges.items()]
         await gather(*coroloops)
 
 
 if __name__ == "__main__":
-    run(main(exchanges, RUNTIME_SECONDS))
+    run(main(exchanges))
+
 
