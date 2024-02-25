@@ -2,6 +2,7 @@
 # pandas 2.1.1
 
 import asyncio
+import logging
 from asyncio import gather, run
 from sqlalchemy.ext.asyncio import create_async_engine
 import time
@@ -54,42 +55,13 @@ async def async_exchange_loop(exchange_id, symbols):
     await exchange.close()
 
 
-async def background_task(task_queue):
-        coroloops = [async_exchange_loop(exchange_id, symbols) for exchange_id, symbols in exchanges.items()]
-        othercoro = []
-        await gather(*coroloops, *othercoro)
-
 
 async def main(exchanges):
-        task_queue = asyncio.Queue()
-        background_task_handle = asyncio.create_task(background_task(task_queue))
-        while True:
-            user_choice_task = asyncio.create_task(Robot.user_input())
-
-            # Wait for either user input or background task completion
-            done, pending = await asyncio.wait(
-                [user_choice_task,background_task_handle],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            # Handle user choice
-            if user_choice_task in done:
-                user_choice_result = user_choice_task.result()
-                print(user_choice_result)
-                task_queue.put_nowait(user_choice_result)
-
-                # Handle background task completion
-            #if background_task_handle in done:
-            # Do any additional processing if needed
-            #        pass
-            
-# def main():
-#     robot = Robot()
-#     loop = asyncio.get_event_loop()
-#     loop.run_until_complete(robot.run())
-#     loop.close()
+    loops = [async_exchange_loop(exchange_id, symbols) for exchange_id, symbols in exchanges.items()]
+    await gather(*loops)
 
 
 if __name__ == "__main__":
-    run(main(exchanges))
+   run(main(exchanges))
 
 

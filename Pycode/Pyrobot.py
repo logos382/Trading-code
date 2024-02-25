@@ -21,10 +21,8 @@ import ccxt.async_support as ccxt
 class Robot():
 
     def __init__(self) -> None:
-        # A common queue holding the jobs for the workers.
-        self.target_q = asyncio.Queue(10) #10 is me max number of jobs that can stay in the queue 0 = infinite jobs
-        # The list of workers
-        self.workers = None
+        pass
+ 
 
     @staticmethod
     def create_asyncengine(sql_uri: str, engine_pool_size: int = 5, engine_max_overflow: int = 10) -> create_async_engine:
@@ -56,7 +54,6 @@ class Robot():
         print("1. Perform Action 1")
         print("2. Perform Action 2")
     
-        user_choice = await aioconsole.ainput("Enter your choice: ")
     
     
 

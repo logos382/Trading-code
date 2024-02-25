@@ -39,28 +39,31 @@ class Alert():
                 currentclose = df5min['Close'].iloc[-1:].values
                 lastclose = df5min['Close'].iloc[-2:-1].values
                 previousclose = df5min['Close'].iloc[-3:-2].values
-                print('====================================')
-                print(f'this is alert for {tablename}, {self.priceup}, {self.pricedown}')
-                print(f'{currentclose}, {lastclose}, {previousclose}')
+                # print('====================================')
+                # print(f'this is alert for {tablename}, {self.priceup}, {self.pricedown}')
+                # print(f'{currentclose}, {lastclose}, {previousclose}')
                 if self.alertpricebreakup == 0:
                     if currentclose > self.priceup:
-                        print('Price went above alert')
+                        # print('Price went above alert')
                         self.alertpricebreakup = 1
                     else:
-                        print('Waiting for breakup')
+                        pass
+                        # print('Waiting for breakup')
                 if self.alertpricebreakup == 1 and self.alertpricecloseup == 0:
                     if lastclose > self.priceup:
-                        print('price closed above the alert') 
+                        # print('price closed above the alert') 
                         self.alertpricecloseup = 1
                     else:
-                        print('waiting to closeup')
+                        pass
+                        # print('waiting to closeup')
                 if self.alertpricebreakup == 1 and self.alertpricecloseup == 1 and self.alertpriceholdsup == 0:
                     if previousclose > self.priceup:
-                        print('price holds above alert') 
+                        # print('price holds above alert') 
                         self.alertpriceholdsup = 1
                     else:
-                        print('waiting to holdup')
-                print('====================================')
+                        pass
+                #         print('waiting to holdup')
+                # print('====================================')
             return self
 
 

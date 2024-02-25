@@ -45,11 +45,11 @@ class DataOperator():
                     series = self.buffer['tablename'].drop_duplicates()
                     for tablename in series:
                         rslt_df = self.buffer[self.buffer['tablename'] == tablename].iloc[:, :5]
-                        # print(f'Wrote on sql table {tablename} {len(rslt_df)} items')
+                        print(f'Wrote on sql table {tablename} {len(rslt_df)} items')
                         await conn.run_sync(DataOperator.to_sql, rslt_df, tablename)        
             except Exception as e:
                 print(f'Error: {e}')
-            self.buffer = self.buffer.tail(10)
+            self.buffer = self.buffer.tail(0)
         return None
 
     async def async_read_sql(self, tablenames):
