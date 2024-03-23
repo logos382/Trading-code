@@ -1,12 +1,40 @@
+from typing import Dict, Coroutine, Optional
+
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 from sqlalchemy import inspect
 import pandas as pd
+import ccxt.async_support as ccxt
+
+
+class DataReader():
+    def __init__(self, async_engine) -> None:
+        self.engine = async_engine
+        pass
+
+class DataWriter():
+    def __init__(self,async_engine) -> None:
+        self.engine = async_engine
+        pass
+
+
+class DataFetcher():
+    def __init__(self) -> None:
+        pass
+    
+    @staticmethod    
+    def create_exchange(exchange_id: str, type: str = 'future'):
+        exchange = getattr(ccxt, exchange_id)({
+            'options': {'defaultType': type ,  # 'spot', 'future', 'margin', 'delivery'
+                        },})
+        exchange.enableRateLimit = True
+        return exchange
+
 
 class DataOperator():
 
-    def __init__(self, asyncengine, buffer_size: int = 109):
-        self.engine = asyncengine
+    def __init__(self, async_engine, buffer_size: int = 109):
+        self.engine = async_engine
         self.buffer = None
         self.BUFFER_SIZE = buffer_size
 

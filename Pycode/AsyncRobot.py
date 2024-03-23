@@ -1,62 +1,27 @@
+from typing import Dict, Coroutine, Optional
+from asyncio import AbstractEventLoop, Task
+
 import asyncio
 import sys
 import aioconsole
+from Dataoperator import DataFetcher, DataReader, DataWriter
+
 
 class aRobot:
-
-    def __init__(self) -> None:
-        self.loop = asyncio.get_event_loop
-        self.isrunning = True
-        self.tasks = {}
-
-    async def asleep(self) -> None:
-        await asyncio.sleep(20)
-        print("asleep completed")
         
+    def __init__(self,
+                 data_fetcher : DataFetcher,
+                 data_reader : DataReader, 
+                 data_writer : DataWriter) -> None:
+        self.loop : AbstractEventLoop = None
+        self.coros : Dict [str, Coroutine] = {} # A dictionary to store the coroutines and their name
+        self.tasks : Dict [str, Task] = {} # A dictionary to store the coroutines and their name
+        self.is_running : bool = True # A flag to indicate if robot is running
+        self.data_fetcher : DataFetcher = data_fetcher
+        self.data_reader : DataReader = data_reader
+        self.data_writer : DataWriter = data_writer
 
-    async def start(self) -> None:
-        while self.isrunning:
-            async with asyncio.TaskGroup() as tg:
-                task1 = tg.create_task(self.menu())
-                task2 = tg.create_task(self.get_input())
-
-
-    async def menu(self) -> None:
-        print("1. Add task1")
-        print("3. Check all tasks")
-        print("5. Exit")
-
-    async def get_input(self):
-        usr_input = input('==> ')
-        await self.select_task(int(usr_input))
-    
-    async def select_task(self,input: int):
-        if input == 1:
-            self.schedule_task(self.asleep)
-        elif input == 3:
-            await self.check_tasks()
-        elif input == 5:
-            self.isrunning = False
-        else:
-            pass
-
-    async def schedule_task(self, coro_func):
-        task = self.loop.create_task(coro_func)
- 
-    async def check_tasks(self):
-        tasks = asyncio.all_tasks()
-        for task in tasks:
-            print(f'> {task.get_name()}, {task.get_coro()}')
-
-class bRobot:
-        
-    def __init__(self) -> None:
-        self.loop = None
-        self.coros : dict = {} # A dictionary to store the coroutines and their name
-        self.isrunning : bool = True # A flag to indicate if robot is running
-        self.tasks : dict = {} # A dictionary to store the coroutines and their name
-
-    def add_task(self, name: str, coro: asyncio.coroutines) -> None:
+    def add_task(self, name: str, coro: Coroutine) -> None:
         # add a task to the dictionary with a name  and a coroutine
         self.coros[name] = coro
     
@@ -101,12 +66,19 @@ class bRobot:
         # get the user input and return it as a string
         return await aioconsole.ainput('==>')
 
-    async def check_tasks(self):
+    async def check_tasks(self) -> None:
         tasks = asyncio.all_tasks()
         for task in tasks:
             print(f'> {task.get_name()}, {task.get_coro()}')
+    
+    async def check_returns(self)-> None:
+        tasks = asyncio.all_tasks()
+        print(f'> {len(tasks)} tasks returned')
+        for task in tasks:
+            if task.done():
+                print(f'> {task.get_name()}, {task.get_coro()} returned {task.result()}')
 
-    async def process_input(self, user_input: str):
+    async def process_input(self, user_input: str) -> None:
         # Process the user input and execute the corresponding task
         if user_input == '1':
             self.add_task("say_hello", self.say_hello())
@@ -126,32 +98,32 @@ class bRobot:
         elif user_input == '6':
             await self.check_tasks()
         elif user_input == '7':
-            pass
+            await self.check_returns()
         elif user_input == '8':
-            self.isrunning = False
+            self.is_running = False
         else:
             print('Invalid option')
         
-    async def start(self):
+    async def start(self) -> None:
         #run the robot
-        while self.isrunning:
-            await self.show_menu()
+        while self.is_running:
             self.loop = asyncio.get_running_loop()
+            await self.show_menu()
             user_input = await self.get_input()
             await self.process_input(user_input)
 
-    async def say_hello(self):
+    async def say_hello(self) -> str:
         await asyncio.sleep(5)
         return 'Hello, I am a robot.'
 
-    async def count(self):
-        i = 0
+    async def count(self) -> None:
+        i: int = 0
         while True:
             print(i)
             i += 1
             await asyncio.sleep(5)
 
-    async def add(self, a, b):
+    async def add(self, a: int, b: int) -> None:
         await asyncio.sleep(5)
         print(f'{a} + {b} = {a + b}')
         
@@ -159,7 +131,7 @@ class bRobot:
 
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    robot = bRobot()
-    asyncio.run(robot.start())
+#     robot : aRobot = aRobot()
+#     asyncio.run(robot.start())
