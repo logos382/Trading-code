@@ -15,13 +15,13 @@ class aRobot:
                  data_writer : DataWriter) -> None:
         self.loop : AbstractEventLoop = None
         self.coros : Dict [str, Coroutine] = {} # A dictionary to store the coroutines and their name
-        self.tasks : Dict [str, Task] = {} # A dictionary to store the coroutines and their name
+        self.tasks : Dict [str, Task] = {} # A dictionary to store the running tasks and their name
         self.is_running : bool = True # A flag to indicate if robot is running
         self.data_fetcher : DataFetcher = data_fetcher
         self.data_reader : DataReader = data_reader
         self.data_writer : DataWriter = data_writer
 
-    def add_task(self, name: str, coro: Coroutine) -> None:
+    def add_coro(self, name: str, coro: Coroutine) -> None:
         # add a task to the dictionary with a name  and a coroutine
         self.coros[name] = coro
     
@@ -38,8 +38,11 @@ class aRobot:
         if name in self.tasks:
             task = self.tasks[name]
             if not task.done():
-                task.cancel()
-                await task
+                try:
+                    task.cancel()
+                    await task
+                except asyncio.exceptions.CancelledError:
+                    print(f'Task {task.get_name()} cancelled')
         else:
             print(f'No such task {name}')
 
@@ -47,8 +50,11 @@ class aRobot:
         # stop all the tasks
         for name, task in self.tasks.items():
             if not task.done():
-                task.cancel()
-                await task
+                try:
+                    task.cancel()
+                    await task                
+                except asyncio.exceptions.CancelledError:
+                    print(f'Task {task.get_name()} cancelled')
     
     async def show_menu(self) ->None :
         # Show a text menu with the options to the user
@@ -81,15 +87,15 @@ class aRobot:
     async def process_input(self, user_input: str) -> None:
         # Process the user input and execute the corresponding task
         if user_input == '1':
-            self.add_task("say_hello", self.say_hello())
+            self.add_coro("say_hello", self.say_hello())
             await self.run_task('say_hello')
         elif user_input == '2':
-            self.add_task('count', self.count())
+            self.add_coro('count', self.count())
             await self.run_task('count')
         elif user_input == '3':
             a = int(await aioconsole.ainput('Enter the first number: '))
             b = int(await aioconsole.ainput('Enter the second number: '))
-            self.add_task('add', self.add(a, b))
+            self.add_coro('add', self.add(a, b))
             await self.run_task('add')
         elif user_input == '4':
             await self.stop_task('count')
@@ -118,7 +124,7 @@ class aRobot:
 
     async def count(self) -> None:
         i: int = 0
-        while True:
+        while i < 10:
             print(i)
             i += 1
             await asyncio.sleep(5)
@@ -131,7 +137,7 @@ class aRobot:
 
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-#     robot : aRobot = aRobot()
-#     asyncio.run(robot.start())
+    robot : aRobot = aRobot(data_fetcher=DataFetcher, data_reader=DataReader, data_writer=DataWriter )
+    asyncio.run(robot.start(), debug=True)
